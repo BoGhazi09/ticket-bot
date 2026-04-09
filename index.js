@@ -26,6 +26,7 @@ const PILOT_ROLE_ID = "1478564123259310090";
 const CLAIMED_BY = "CLAIMED_BY:";
 const ORIGINAL_NAME = "ORIGINAL_NAME:";
 
+// commands
 const commands = [
   new SlashCommandBuilder()
     .setName("claimticket")
@@ -69,73 +70,80 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
-  // =========================
+  // ======================
   // CLAIM
-  // =========================
+  // ======================
   if (interaction.commandName === "claimticket") {
-
-    await interaction.deferReply({ ephemeral: true });
-
-    const topic = channel.topic || "";
-
-    if (topic.startsWith(CLAIMED_BY)) {
-      return interaction.editReply("This ticket is already claimed.");
-    }
-
-    const username = interaction.user.username
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
-
-    // SAVE ORIGINAL NAME ON FIRST CLAIM
-    const originalName = channel.name;
-
-    const newName = `${originalName}-${username}`;
-
     try {
-      await channel.setName(newName);
+      await interaction.deferReply({ ephemeral: true });
 
-      await channel.setTopic(
-        `${CLAIMED_BY}${interaction.user.id}|${ORIGINAL_NAME}${originalName}`
-      );
+      const topic = channel.topic || "";
+
+      if (topic.startsWith(CLAIMED_BY)) {
+        return interaction.editReply("This ticket is already claimed.");
+      }
+
+      const username = interaction.user.username
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+
+      const originalName = channel.name;
+      const newName = `${originalName}-${username}`;
+
+      await channel.setName(newName);
+      await channel.setTopic(`${CLAIMED_BY}${interaction.user.id}|${ORIGINAL_NAME}${originalName}`);
 
       return interaction.editReply(`Claimed by ${username}`);
+
     } catch (err) {
-      console.error(err);
-      return interaction.editReply("Claim failed.");
+      console.error("CLAIM ERROR:", err);
+
+      if (!interaction.replied) {
+        return interaction.reply({
+          content: "Claim failed.",
+          ephemeral: true
+        });
+      }
     }
   }
 
-  // =========================
+  // ======================
   // UNCLAIM
-  // =========================
+  // ======================
   if (interaction.commandName === "unclaimticket") {
-
-    await interaction.deferReply({ ephemeral: true });
-
-    const topic = channel.topic || "";
-
-    if (!topic.startsWith(CLAIMED_BY)) {
-      return interaction.editReply("This ticket is not claimed.");
-    }
-
-    const parts = topic.split("|");
-
-    const originalPart = parts.find(p => p.startsWith(ORIGINAL_NAME));
-
-    if (!originalPart) {
-      return interaction.editReply("Original name not found.");
-    }
-
-    const originalName = originalPart.replace(ORIGINAL_NAME, "");
-
     try {
+      await interaction.deferReply({ ephemeral: true });
+
+      const topic = channel.topic || "";
+
+      if (!topic.includes(CLAIMED_BY)) {
+        return interaction.editReply("This ticket is not claimed.");
+      }
+
+      const originalPart = topic
+        .split("|")
+        .find(p => p.startsWith(ORIGINAL_NAME));
+
+      if (!originalPart) {
+        return interaction.editReply("Original name missing.");
+      }
+
+      const originalName = originalPart.replace(ORIGINAL_NAME, "");
+
       await channel.setName(originalName);
       await channel.setTopic("");
 
       return interaction.editReply("Ticket unclaimed.");
+
     } catch (err) {
-      console.error(err);
-      return interaction.editReply("Unclaim failed.");
+      console.error("UNCLAIM ERROR:", err);
+
+      if (!interaction.replied) {
+        return interaction.reply({
+          content: "Unclaim failed.",
+          ephemeral: true
+        });
+      }
     }
   }
 });

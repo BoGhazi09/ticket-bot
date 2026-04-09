@@ -1,3 +1,14 @@
+const express = require("express");
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("Bot is running");
+});
+
+app.listen(3000, () => {
+  console.log("Web server running");
+});
+
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require("discord.js");
 
 const client = new Client({
@@ -68,10 +79,8 @@ client.on("interactionCreate", async (interaction) => {
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "");
 
-    // 🧠 CLEAN BASE NAME (remove old -username if it exists)
+    // remove old username from channel name
     let baseName = channel.name;
-
-    // remove last "-something"
     const parts = baseName.split("-");
     if (parts.length > 1) {
       baseName = parts.slice(0, -1).join("-");

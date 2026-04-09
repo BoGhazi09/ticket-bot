@@ -30,7 +30,7 @@ client.once("clientReady", async () => {
   try {
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
     console.log("Commands registered");
-  } catch (err) { console.error(err); }
+  } catch (err) { console.error("Register Error:", err); }
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -42,7 +42,7 @@ client.on("interactionCreate", async (interaction) => {
     return interaction.reply({ content: "No permission.", flags: MessageFlags.Ephemeral });
   }
 
-  // Use defer so the interaction doesn't expire
+  // Use defer to stop the "thinking" spinner
   try {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   } catch (e) { return; }
@@ -54,20 +54,18 @@ client.on("interactionCreate", async (interaction) => {
     try {
       const cleanUser = user.username.toLowerCase().replace(/[^a-z0-9]/g, "");
       
-      // If name already ends with the username, stop
+      // Safety: If name already ends with -username, don't rename (prevents crash)
       if (channel.name.endsWith(`-${cleanUser}`)) {
-        return interaction.editReply("You have already claimed this!");
+        return interaction.editReply("You have already claimed this ticket.");
       }
 
-      // Exact format: war-boghazi09-reealms
       const newName = `${channel.name}-${cleanUser}`;
-
       await channel.setName(newName);
-      await interaction.editReply(`Ticket claimed: **${newName}**`);
+      return interaction.editReply(`Ticket claimed: **${newName}**`);
 
     } catch (err) {
-      console.error(err);
-      await interaction.editReply("Claim failed. You are likely rate-limited by Discord. Wait 10 minutes.");
+      console.error("CLAIM ERROR:", err);
+      return interaction.editReply("Claim failed. You might be rate-limited (2 renames per 10 mins).");
     }
   }
 
@@ -78,22 +76,25 @@ client.on("interactionCreate", async (interaction) => {
     try {
       const nameParts = channel.name.split("-");
       
-      // If the channel name doesn't have at least one hyphen, we can't unclaim
       if (nameParts.length < 2) {
-        return interaction.editReply("This ticket doesn't look claimed.");
+        return interaction.editReply("This ticket is not claimed.");
       }
 
-      // This removes the LAST part of the name (the username)
-      // Example: war-boghazi09-reealms -> [war, boghazi09, reealms] -> pop() -> [war, boghazi09]
+      // Pop the last part (the username)
       nameParts.pop();
       const restoredName = nameParts.join("-");
 
+      // Safety: If the name is already the restored name, just finish
+      if (channel.name === restoredName) {
+        return interaction.editReply("Ticket is already unclaimed.");
+      }
+
       await channel.setName(restoredName);
-      await interaction.editReply(`Ticket reset to: **${restoredName}**`);
+      return interaction.editReply(`Ticket unclaimed: **${restoredName}**`);
 
     } catch (err) {
-      console.error(err);
-      await interaction.editReply("Unclaim failed. Discord only allows 2 renames every 10 minutes.");
+      console.error("UNCLAIM ERROR:", err);
+      return interaction.editReply("Unclaim failed. Discord limits renames to 2 per 10 mins.");
     }
   }
 });

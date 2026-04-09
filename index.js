@@ -15,10 +15,11 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
+// Slash command
 const commands = [
   new SlashCommandBuilder()
     .setName("claimticket")
-    .setDescription("Claim this ticket and rename the channel")
+    .setDescription("Claim this ticket and rename it")
     .toJSON()
 ];
 
@@ -42,25 +43,30 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "claimticket") {
-
     const channel = interaction.channel;
+
+    if (!channel) {
+      return interaction.reply({ content: "No channel found.", ephemeral: true });
+    }
+
     const username = interaction.user.username
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "");
 
-    // SIMPLE TEST NAME (no logic, no splitting)
     const newName = `claimed-${username}`;
 
+    await interaction.deferReply({ ephemeral: true });
+
     try {
-      await interaction.deferReply({ ephemeral: true });
+      const updated = await channel.setName(newName);
 
-      await channel.setName(newName);
+      console.log("Rename success:", updated.name);
 
-      return interaction.editReply(`Renamed to ${newName}`);
+      return interaction.editReply(`Renamed to ${updated.name}`);
     } catch (err) {
-      console.error("RENAME ERROR:", err);
+      console.error("RENAME FAILED:", err);
 
-      return interaction.editReply("Rename failed (check permissions).");
+      return interaction.editReply("Rename failed. Check bot permissions or channel type.");
     }
   }
 });

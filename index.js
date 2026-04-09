@@ -43,6 +43,7 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "claimticket") {
+
     const channel = interaction.channel;
 
     if (!channel) {
@@ -53,20 +54,29 @@ client.on("interactionCreate", async (interaction) => {
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "");
 
-    const newName = `claimed-${username}`;
+    // 🧠 FIXED: replace only last part of channel name
+    let parts = channel.name.split("-");
+
+    if (parts.length > 1) {
+      parts.pop(); // remove old claimer
+    }
+
+    parts.push(username); // add new claimer
+
+    const newName = parts.join("-");
 
     await interaction.deferReply({ ephemeral: true });
 
     try {
       const updated = await channel.setName(newName);
 
-      console.log("Rename success:", updated.name);
+      console.log("Renamed to:", updated.name);
 
       return interaction.editReply(`Renamed to ${updated.name}`);
     } catch (err) {
-      console.error("RENAME FAILED:", err);
+      console.error("RENAME ERROR:", err);
 
-      return interaction.editReply("Rename failed. Check bot permissions or channel type.");
+      return interaction.editReply("Rename failed (check permissions or channel type).");
     }
   }
 });

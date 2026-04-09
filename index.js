@@ -51,24 +51,31 @@ client.on("interactionCreate", async (interaction) => {
   // ======================
   if (commandName === "claimticket") {
     try {
-      // If there is already a topic, it means the original name is stored there (already claimed)
-      if (channel.topic && channel.topic.length > 0) {
-        return interaction.editReply("This ticket is already claimed!");
+      const cleanUser = user.username.toLowerCase().replace(/[^a-z0-9]/g, "");
+      
+      // If the channel name already ends with ANY username-like string after a hyphen, 
+      // but we want to be safe, we check if it already contains the user's name.
+      if (channel.name.endsWith(`-${cleanUser}`)) {
+        return interaction.editReply("You have already claimed this ticket!");
+      }
+
+      // To prevent claiming twice, we check if the channel has a topic "CLAIMED"
+      // I've added a fallback so it doesn't get stuck.
+      if (channel.topic === "CLAIMED") {
+        return interaction.editReply("This ticket is already claimed by someone else!");
       }
 
       const originalName = channel.name;
-      const cleanUser = user.username.toLowerCase().replace(/[^a-z0-9]/g, "");
       const newName = `${originalName}-${cleanUser}`;
 
-      // 1. Store the original name in the topic first
-      await channel.setTopic(originalName);
-      // 2. Rename the channel
+      // Set topic to "CLAIMED" to act as a simple toggle
+      await channel.setTopic("CLAIMED");
       await channel.setName(newName);
       
       await interaction.editReply(`Ticket claimed by **${user.username}**.`);
     } catch (err) {
       console.error(err);
-      await interaction.editReply("Claim failed. (You are likely rate-limited. Wait 10 mins!)");
+      await interaction.editReply("Claim failed. (Discord Rate Limit: Max 2 renames per 10 mins)");
     }
   }
 
@@ -77,19 +84,25 @@ client.on("interactionCreate", async (interaction) => {
   // ======================
   if (commandName === "unclaimticket") {
     try {
-      // If the topic is empty, there is nothing to restore
-      if (!channel.topic || channel.topic.length === 0) {
+      if (channel.topic !== "CLAIMED") {
         return interaction.editReply("This ticket is not currently claimed.");
       }
 
-      const originalName = channel.topic;
+      const nameParts = channel.name.split("-");
+      if (nameParts.length < 2) {
+        // If there's no hyphen, we just clear the topic
+        await channel.setTopic("");
+        return interaction.editReply("Ticket status reset.");
+      }
 
-      // 1. Restore the name from the topic "Vault"
-      await channel.setName(originalName);
-      // 2. Clear the topic so it can be claimed again later
-      await channel.setTopic(""); 
+      // Remove the last part (the username)
+      nameParts.pop();
+      const restoredName = nameParts.join("-");
+
+      await channel.setName(restoredName);
+      await channel.setTopic(""); // Clear the claimed status
       
-      await interaction.editReply("Ticket unclaimed and reset.");
+      await interaction.editReply("Ticket unclaimed.");
     } catch (err) {
       console.error(err);
       await interaction.editReply("Unclaim failed. (Wait 10 mins for Discord rate limits!)");

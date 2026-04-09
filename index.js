@@ -79,7 +79,7 @@ client.on("interactionCreate", async (interaction) => {
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "");
 
-    // remove old username from channel name
+    // clean name (remove last part)
     let baseName = channel.name;
     const parts = baseName.split("-");
     if (parts.length > 1) {
@@ -88,8 +88,18 @@ client.on("interactionCreate", async (interaction) => {
 
     const newName = `${baseName}-${username}`;
 
-    await channel.setTopic(`${CLAIMED_TAG}${interaction.user.id}`);
-    await channel.setName(newName);
+    // 🔴 DEBUG RENAME
+    try {
+      await channel.setTopic(`${CLAIMED_TAG}${interaction.user.id}`);
+      await channel.setName(newName);
+    } catch (err) {
+      console.error("RENAME ERROR:", err);
+
+      return interaction.reply({
+        content: "Failed to rename channel. Check Render logs.",
+        ephemeral: true
+      });
+    }
 
     return interaction.reply({
       content: `Ticket claimed by ${interaction.user.username}`,

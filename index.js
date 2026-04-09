@@ -46,28 +46,31 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   } catch (e) { return; }
 
+  // We use a specific identifier to ensure the loop works
+  const CLAIM_TAG = "-claimedby-";
+
   // ======================
   // CLAIM
   // ======================
   if (commandName === "claimticket") {
     try {
-      // Check topic to see if it's already claimed
-      if (channel.topic && channel.topic.includes("CLAIMED:")) {
+      // 1. Check if already claimed
+      if (channel.name.includes(CLAIM_TAG)) {
         return interaction.editReply("This ticket is already claimed!");
       }
 
-      const originalName = channel.name;
       const cleanUser = user.username.toLowerCase().replace(/[^a-z0-9]/g, "");
-      const newName = `${originalName}-${cleanUser}`;
+      const newName = `${channel.name}${CLAIM_TAG}${cleanUser}`;
 
-      // Save "CLAIMED:original-name" in the topic
-      await channel.setTopic(`CLAIMED:${originalName}`);
+      // We wipe the topic just in case old code left "Already Claimed" text there
+      if (channel.topic) await channel.setTopic(""); 
+
       await channel.setName(newName);
-      
       await interaction.editReply(`Ticket claimed by **${user.username}**.`);
+
     } catch (err) {
       console.error(err);
-      await interaction.editReply("Claim failed. Discord limit: 2 renames per 10 mins. Wait a bit!");
+      await interaction.editReply("Claim failed. (Discord Rate Limit: You can only rename a channel twice every 10 mins).");
     }
   }
 
@@ -76,21 +79,24 @@ client.on("interactionCreate", async (interaction) => {
   // ======================
   if (commandName === "unclaimticket") {
     try {
-      // If the topic doesn't have our "CLAIMED:" tag, we can't unclaim
-      if (!channel.topic || !channel.topic.startsWith("CLAIMED:")) {
+      if (!channel.name.includes(CLAIM_TAG)) {
         return interaction.editReply("This ticket is not currently claimed.");
       }
 
-      // Get the original name back from the topic
-      const restoredName = channel.topic.replace("CLAIMED:", "");
+      // Split at the tag and take the FIRST part (the original name)
+      const parts = channel.name.split(CLAIM_TAG);
+      const originalName = parts[0];
 
-      await channel.setName(restoredName);
-      await channel.setTopic(""); // Clear topic
+      await channel.setName(originalName);
       
-      await interaction.editReply("Ticket unclaimed.");
+      // Safety: Clear topic again
+      if (channel.topic) await channel.setTopic(""); 
+
+      await interaction.editReply("Ticket unclaimed. You can now claim it again.");
+
     } catch (err) {
       console.error(err);
-      await interaction.editReply("Unclaim failed. You are likely rate-limited by Discord (Wait 10 mins).");
+      await interaction.editReply("Unclaim failed. (Discord Rate Limit: Wait 10 minutes to rename again).");
     }
   }
 });

@@ -1,19 +1,10 @@
-const express = require("express");
-const app = express();
-
-app.get("/", (req, res) => {
-  res.send("Bot is running");
-});
-
-app.listen(3000, () => {
-  console.log("Web server running");
-});
-
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require("discord.js");
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
+
+const CLAIMED_TAG = "CLAIMED_BY:";
 
 const commands = [
   new SlashCommandBuilder()
@@ -49,33 +40,38 @@ client.on("interactionCreate", async (interaction) => {
     const member = interaction.member;
     const channel = interaction.channel;
 
-    if (!channel) return;
+    if (!channel) {
+      return interaction.reply({ content: "Channel not found.", ephemeral: true });
+    }
 
     const isOwner = member.roles.cache.has(ownerRoleId);
     const isPilot = member.roles.cache.has(pilotRoleId);
 
     if (!isPilot && !isOwner) {
       return interaction.reply({
-        content: "No permission.",
+        content: "You don't have permission to use this command.",
         ephemeral: true
       });
     }
 
-    // IMPORTANT FIX (prevents Unknown Interaction)
-    await interaction.deferReply({ ephemeral: true });
-
     const topic = channel.topic || "";
-    const alreadyClaimed = topic.includes("CLAIMED_BY:");
+    const alreadyClaimed = topic.includes(CLAIMED_TAG);
 
     if (alreadyClaimed && !isOwner) {
-      return interaction.editReply("This ticket is already claimed.");
+      return interaction.reply({
+        content: "This ticket is already claimed.",
+        ephemeral: true
+      });
     }
 
     const username = interaction.user.username
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "");
 
+    // 🧠 CLEAN BASE NAME (remove old -username if it exists)
     let baseName = channel.name;
+
+    // remove last "-something"
     const parts = baseName.split("-");
     if (parts.length > 1) {
       baseName = parts.slice(0, -1).join("-");
@@ -83,15 +79,13 @@ client.on("interactionCreate", async (interaction) => {
 
     const newName = `${baseName}-${username}`;
 
-    try {
-      await channel.setTopic(`CLAIMED_BY:${interaction.user.id}`);
-      await channel.setName(newName);
-    } catch (err) {
-      console.error(err);
-      return interaction.editReply("Rename failed. Check bot permissions.");
-    }
+    await channel.setTopic(`${CLAIMED_TAG}${interaction.user.id}`);
+    await channel.setName(newName);
 
-    return interaction.editReply(`Ticket claimed by ${interaction.user.username}`);
+    return interaction.reply({
+      content: `Ticket claimed by ${interaction.user.username}`,
+      ephemeral: true
+    });
   }
 });
 

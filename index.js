@@ -1,8 +1,6 @@
 const express = require("express");
 const app = express();
-
 app.get("/", (req, res) => res.send("Bot running"));
-
 app.listen(3000, () => console.log("Web server started"));
 
 const {
@@ -14,17 +12,17 @@ const {
 } = require("discord.js");
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  // Added GuildMessages to ensure it can see interactions in threads
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
 const PILOT_ROLE_ID = "1478564123259310090";
-const CLAIM_PREFIX = "CLAIMED:";
+const CLAIM_PREFIX = "CLAIMED_BY:";
 
 const commands = [
   new SlashCommandBuilder()
     .setName("claimticket")
     .setDescription("Claim this ticket"),
-
   new SlashCommandBuilder()
     .setName("unclaimticket")
     .setDescription("Unclaim this ticket")
@@ -34,85 +32,71 @@ const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
-
-  await rest.put(
-    Routes.applicationCommands(client.user.id),
-    { body: commands }
-  );
-
-  console.log("Commands registered");
+  try {
+    await rest.put(
+      Routes.applicationCommands(client.user.id),
+      { body: commands }
+    );
+    console.log("Commands registered");
+  } catch (error) {
+    console.error("Failed to register commands:", error);
+  }
 });
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  const channel = interaction.channel;
-  const member = interaction.member;
+  const { channel, member, commandName, user } = interaction;
 
-  if (!channel) return;
-
+  // 1. Check Permissions
   if (!member.roles.cache.has(PILOT_ROLE_ID)) {
-    return interaction.reply({
-      content: "No permission.",
-      ephemeral: true
-    });
+    return interaction.reply({ content: "No permission.", ephemeral: true });
   }
 
-  // ======================
-  // CLAIM
-  // ======================
-  if (interaction.commandName === "claimticket") {
-    await interaction.reply({ content: "Claiming...", ephemeral: true });
+  // 2. Handle Claim Logic
+  if (commandName === "claimticket") {
+    await interaction.deferReply({ ephemeral: true });
 
     try {
-      const topic = channel.topic || "";
-
-      if (topic.startsWith(CLAIM_PREFIX)) {
-        return interaction.editReply("Already claimed.");
+      // NOTE: Standard Threads do NOT have topics. 
+      // We will check the channel name for the prefix instead.
+      if (channel.name.includes("-claimed-")) {
+        return interaction.editReply("This ticket is already claimed!");
       }
 
-      const username = interaction.user.username
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "");
+      const cleanUsername = user.username.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const newName = `${channel.name}-claimed-${cleanUsername}`;
 
-      await channel.setName(`${channel.name}-${username}`);
-
-      await channel.setTopic(`${CLAIM_PREFIX}${interaction.user.id}`);
-
-      return interaction.editReply("Claimed.");
+      await channel.setName(newName);
+      
+      // If it's a thread, we can't set a topic, so we send a message instead
+      return interaction.editReply(`Ticket successfully claimed by **${user.username}**.`);
 
     } catch (err) {
       console.error("CLAIM ERROR:", err);
-      return interaction.editReply("Claim failed.");
+      return interaction.editReply("Claim failed. Does the bot have 'Manage Channels' or 'Manage Threads' permissions?");
     }
   }
 
-  // ======================
-  // UNCLAIM
-  // ======================
-  if (interaction.commandName === "unclaimticket") {
-    await interaction.reply({ content: "Unclaiming...", ephemeral: true });
+  // 3. Handle Unclaim Logic
+  if (commandName === "unclaimticket") {
+    await interaction.deferReply({ ephemeral: true });
 
     try {
-      const topic = channel.topic || "";
-
-      if (!topic.startsWith(CLAIM_PREFIX)) {
-        return interaction.editReply("Not claimed.");
+      if (!channel.name.includes("-claimed-")) {
+        return interaction.editReply("This ticket is not currently claimed.");
       }
 
-      const username = topic.replace(CLAIM_PREFIX, "");
+      // Logic to strip the "-claimed-username" part
+      // This splits at the start of the claim string and takes the first part
+      const baseName = channel.name.split("-claimed-")[0];
 
-      let parts = channel.name.split("-");
-      parts.pop(); // remove username safely
-
-      await channel.setName(parts.join("-"));
-      await channel.setTopic("");
-
-      return interaction.editReply("Unclaimed.");
+      await channel.setName(baseName);
+      return interaction.editReply("Ticket has been unclaimed.");
 
     } catch (err) {
       console.error("UNCLAIM ERROR:", err);
-      return interaction.editReply("Unclaim failed.");
+      return interaction.editReply("Unclaim failed. Check bot permissions.");
     }
   }
 });

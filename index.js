@@ -29,45 +29,37 @@ client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   try {
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    console.log("Commands registered");
   } catch (err) { console.error(err); }
 });
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-
   const { channel, member, commandName, user } = interaction;
 
   if (!member.roles.cache.has(PILOT_ROLE_ID)) {
     return interaction.reply({ content: "No permission.", flags: MessageFlags.Ephemeral });
   }
 
-  try {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  } catch (e) { return; }
+  // Defer immediately to prevent "Interaction Failed"
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   // ======================
   // CLAIM
   // ======================
   if (commandName === "claimticket") {
     try {
-      // Check if already claimed by looking for our hidden marker in the topic
-      if (channel.topic && channel.topic.startsWith("ORIGINAL_NAME:")) {
-        return interaction.editReply("This ticket is already claimed!");
+      const cleanUser = user.username.toLowerCase().replace(/[^a-z0-9]/g, "");
+      
+      // If the name already ends with this user, don't do it again
+      if (channel.name.endsWith("-" + cleanUser)) {
+        return interaction.editReply("You already claimed this!");
       }
 
-      const originalName = channel.name;
-      const cleanUser = user.username.toLowerCase().replace(/[^a-z0-9]/g, "");
-      const newName = `${originalName}-${cleanUser}`;
-
-      // Save the original name in the topic so unclaim is 100% accurate
-      await channel.setTopic(`ORIGINAL_NAME:${originalName}`);
+      const newName = `${channel.name}-${cleanUser}`;
       await channel.setName(newName);
-      
-      await interaction.editReply(`Ticket claimed by **${user.username}**.`);
+      await interaction.editReply(`Claimed: ${newName}`);
     } catch (err) {
-      console.error(err);
-      await interaction.editReply("Claim failed. You are likely rate-limited. Wait 10 mins.");
+      await interaction.editReply("Claim failed. You are likely rate-limited (2 per 10 mins).");
     }
   }
 
@@ -76,21 +68,21 @@ client.on("interactionCreate", async (interaction) => {
   // ======================
   if (commandName === "unclaimticket") {
     try {
-      // If the topic doesn't have our marker, it's not claimed
-      if (!channel.topic || !channel.topic.startsWith("ORIGINAL_NAME:")) {
-        return interaction.editReply("This ticket is not currently claimed.");
+      const currentName = channel.name;
+      const lastHyphenIndex = currentName.lastIndexOf("-");
+
+      // If there is no hyphen, it's already unclaimed
+      if (lastHyphenIndex === -1) {
+        return interaction.editReply("This ticket is not claimed.");
       }
 
-      // Get the EXACT original name back from the topic vault
-      const restoredName = channel.topic.replace("ORIGINAL_NAME:", "");
+      // Cut the name at the very last hyphen found
+      const restoredName = currentName.substring(0, lastHyphenIndex);
 
       await channel.setName(restoredName);
-      await channel.setTopic(""); // Clear the vault
-      
-      await interaction.editReply("Ticket unclaimed.");
+      await interaction.editReply(`Unclaimed: ${restoredName}`);
     } catch (err) {
-      console.error(err);
-      await interaction.editReply("Unclaim failed. Discord limits renames to 2 per 10 mins.");
+      await interaction.editReply("Unclaim failed. Discord limit reached. Wait 10 mins.");
     }
   }
 });

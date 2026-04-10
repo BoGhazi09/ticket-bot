@@ -40,39 +40,33 @@ client.on("interactionCreate", async (interaction) => {
     return interaction.reply({ content: "No permission.", flags: MessageFlags.Ephemeral });
   }
 
-  // Defer immediately to prevent "Interaction Failed"
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  // Helper function to clean username
-  const cleanUsername = (username) => {
-    return username.toLowerCase().replace(/[^a-z0-9]/g, "");
-  };
+  const cleanUser = user.username.toLowerCase().replace(/[^a-z0-9]/g, "");
 
   // ======================
   // CLAIM
   // ======================
   if (commandName === "claimticket") {
     try {
-      const cleanUser = cleanUsername(user.username);
-      
-      // Check if already claimed by anyone
-      const claimedPattern = new RegExp(`-${cleanUser}$`);
-      if (channel.name.match(claimedPattern)) {
-        return interaction.editReply("You already claimed this!");
+      if (channel.name.endsWith("-" + cleanUser)) {
+        return interaction.editReply("You already claimed this ticket!");
       }
 
-      // Check if claimed by someone else
-      const hasClaimSuffix = /-[a-z0-9]+$/;
-      if (hasClaimSuffix.test(channel.name)) {
-        return interaction.editReply("This ticket is already claimed by someone else!");
-      }
-
+      // Check if claimed by someone else — look for any pilot's suffix
+      // Simple approach: warn if name already looks claimed (has any suffix after last hyphen)
+      // You can expand this if you store claim state externally
       const newName = `${channel.name}-${cleanUser}`;
+
+      if (newName.length > 100) {
+        return interaction.editReply("Channel name would exceed Discord's 100-character limit.");
+      }
+
       await channel.setName(newName);
-      await interaction.editReply(`Claimed: ${newName}`);
+      await interaction.editReply(`✅ Claimed: \`${newName}\``);
     } catch (err) {
       console.error(err);
-      await interaction.editReply("Claim failed. You are likely rate-limited (2 per 10 mins).");
+      await interaction.editReply("Claim failed. You may be rate-limited (2 renames per 10 mins).");
     }
   }
 
@@ -82,31 +76,31 @@ client.on("interactionCreate", async (interaction) => {
   if (commandName === "unclaimticket") {
     try {
       const currentName = channel.name;
-      const cleanUser = cleanUsername(user.username);
-      
-      // Check if the ticket is claimed at all
-      const hasClaimSuffix = /-[a-z0-9]+$/;
-      if (!hasClaimSuffix.test(currentName)) {
-        return interaction.editReply("This ticket is not claimed.");
+      const suffix = "-" + cleanUser;
+
+      // Only allow unclaim if the channel ends with THIS user's suffix
+      if (!currentName.endsWith(suffix)) {
+        // Give a more helpful message depending on context
+        const isClaimed = currentName.lastIndexOf("-") !== -1;
+        if (isClaimed) {
+          return interaction.editReply("You didn't claim this ticket — only the claimer can unclaim it.");
+        } else {
+          return interaction.editReply("This ticket is not claimed.");
+        }
       }
-      
-      // Extract the claimed username from the channel name
-      const lastHyphenIndex = currentName.lastIndexOf("-");
-      const claimedUser = currentName.substring(lastHyphenIndex + 1);
-      
-      // Check if the user trying to unclaim is the one who claimed it
-      if (claimedUser !== cleanUser) {
-        return interaction.editReply("You can only unclaim tickets that you claimed!");
+
+      // Safely remove only this user's suffix from the end
+      const restoredName = currentName.slice(0, currentName.length - suffix.length);
+
+      if (!restoredName) {
+        return interaction.editReply("Cannot unclaim: restoring the name would leave it empty.");
       }
-      
-      // Remove the claim suffix
-      const restoredName = currentName.substring(0, lastHyphenIndex);
-      
+
       await channel.setName(restoredName);
-      await interaction.editReply(`Unclaimed: ${restoredName}`);
+      await interaction.editReply(`✅ Unclaimed: \`${restoredName}\``);
     } catch (err) {
       console.error(err);
-      await interaction.editReply("Unclaim failed. Discord limit reached. Wait 10 mins.");
+      await interaction.editReply("Unclaim failed. Discord rate limit reached — wait 10 mins.");
     }
   }
 });
